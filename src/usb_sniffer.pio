@@ -1,0 +1,32 @@
+;
+; @file usb_sniffer.pio
+; @brief PIO program for continuous passive USB line sampling.
+;
+; Samples two consecutive GPIO pins (D+ and D-) every clock cycle.
+; Each sample occupies 2 bits in the ISR.  With autopush configured
+; at 32 bits, the PIO pushes one word containing 16 samples to the
+; RX FIFO automatically — no CPU intervention required.
+;
+; Clock divisor determines the effective sample rate:
+;
+;   Speed       Bit Rate    Oversample   PIO Rate   Divider (@ 120 MHz)
+;   ─────────   ─────────   ──────────   ────────   ───────────────────
+;   Low-Speed   1.5 Mbps    8×           12 MHz     10.0
+;   Full-Speed  12  Mbps    8×           96 MHz     1.25
+;
+; The DMA engine drains the FIFO into RAM ping-pong buffers.
+;
+; @note This is the simplest possible PIO program — a single
+;       instruction in a tight loop.  All decoding is done in software.
+;
+; @see usb_sniffer.pio.h for the pre-compiled header.
+;
+; @author Ângelo Moisés Alves
+; @version 1.0.0
+;
+
+.program usb_sniffer
+
+.wrap_target
+    in pins, 2          ; Read D+ and D- simultaneously (1 cycle)
+.wrap

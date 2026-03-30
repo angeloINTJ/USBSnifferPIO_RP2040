@@ -1,0 +1,38 @@
+{
+    "name": "USBSnifferPIO_RP2040",
+    "version": "1.0.0",
+    "description": "Passive USB 1.1 packet sniffer using the RP2040 PIO coprocessor. Deterministic 8x oversampled line sampling via a single PIO state machine, DMA ping-pong buffering for zero-copy transfer, and a full software decoder (clock recovery, NRZI, bit-unstuffing, CRC5/CRC16). Callback-driven API with structured USBPacket delivery. Dual-core ready.",
+    "keywords": [
+        "usb",
+        "sniffer",
+        "pio",
+        "dma",
+        "rp2040",
+        "pico",
+        "pico-w",
+        "protocol-analyzer",
+        "nrzi",
+        "crc",
+        "hid",
+        "keyboard",
+        "low-speed",
+        "full-speed",
+        "hardware-accelerated",
+        "non-blocking",
+        "dual-core",
+        "passive"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/angeloINTJ/USBSnifferPIO_RP2040.git"
+    },
+    "authors": [
+        {
+            "name": "Ângelo Moisés Alves"
+        }
+    ],
+    "homepage": "https://github.com/angeloINTJ/USBSnifferPIO_RP2040",
+    "license": "MIT",
+    "frameworks": "arduino",
+    "platforms": "raspberrypi"
+}

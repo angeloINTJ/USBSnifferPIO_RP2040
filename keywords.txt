@@ -1,0 +1,48 @@
+# ═══════════════════════════════════════════════════════
+#  USBSnifferPIO_RP2040 v1.0 — Arduino IDE Keyword Highlighting
+# ═══════════════════════════════════════════════════════
+
+# Classes (KEYWORD1 — orange)
+USBSnifferPIO	KEYWORD1
+USBPacketDecoder	KEYWORD1
+USBPacket	KEYWORD1
+USBLineState	KEYWORD1
+USBSpeed	KEYWORD1
+USBPacketType	KEYWORD1
+
+# Methods (KEYWORD2 — brown)
+begin	KEYWORD2
+end	KEYWORD2
+task	KEYWORD2
+onPacket	KEYWORD2
+reset	KEYWORD2
+feedSamples	KEYWORD2
+decoder	KEYWORD2
+isRunning	KEYWORD2
+isHIDKeyboardReport	KEYWORD2
+classifyPID	KEYWORD2
+crc5_usb	KEYWORD2
+crc16_usb	KEYWORD2
+
+# Constants (LITERAL1 — blue)
+LOW_SPEED	LITERAL1
+FULL_SPEED	LITERAL1
+TOKEN	LITERAL1
+DATA	LITERAL1
+HANDSHAKE	LITERAL1
+SPECIAL	LITERAL1
+UNKNOWN	LITERAL1
+SE0	LITERAL1
+SE1	LITERAL1
+
+# PID constants
+OUT	LITERAL1
+IN	LITERAL1
+SOF	LITERAL1
+SETUP	LITERAL1
+DATA0	LITERAL1
+DATA1	LITERAL1
+ACK	LITERAL1
+NAK	LITERAL1
+STALL	LITERAL1
+PRE	LITERAL1

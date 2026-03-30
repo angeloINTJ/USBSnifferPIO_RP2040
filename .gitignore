@@ -1,0 +1,18 @@
+# Build artifacts
+.pio/
+.vscode/
+build/
+*.o
+*.elf
+*.bin
+*.hex
+*.uf2
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE settings
+*.swp
+*.swo
+*~
