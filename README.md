@@ -41,7 +41,7 @@ The host and device never know the sniffer exists.
 ## Hardware Setup
 
 ```
-USB Cable (Device ↔ Host)           Raspberry Pi Pico
+USB Cable (Device ↔ Host)            Raspberry Pi Pico
 ┌────────────────────┐              ┌──────────────────┐
 │  VBUS (red)        │              │                  │
 │  D-   (white)      │───[100Ω]────►│ GP3              │
@@ -219,7 +219,7 @@ A: The RP2350 has PIO v2 with the same instruction set. This library should work
 ```
   RP2040 GPIO 2 (D+) ──── 100Ω ──── USB cable D+ (green)
   RP2040 GPIO 3 (D-) ──── 100Ω ──── USB cable D- (white)
-  RP2040 GND ─────────────────────── USB cable GND (black)
+  RP2040 GND ────────────────────── USB cable GND (black)
 ```
 
 **Do NOT connect VBUS.** Power the Pico from its own USB port or an external supply.
