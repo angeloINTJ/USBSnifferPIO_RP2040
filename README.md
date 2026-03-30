@@ -5,6 +5,25 @@
 Captures Low-Speed and Full-Speed USB traffic without interfering with the bus.  
 The host and device never know the sniffer exists.
 
+> **⚠️ Legal Disclaimer**
+>
+> This project is provided **strictly for educational purposes, authorized security research, and legitimate hardware auditing**. It is intended to help security professionals, researchers, and enthusiasts understand USB HID protocol internals, PIO-based signal capture, and embedded cryptography.
+>
+> **You are solely responsible for ensuring that your use of this software complies with all applicable laws in your jurisdiction.** Intercepting, recording, or monitoring keyboard input from devices you do not own — or without the explicit, informed consent of the device owner — is **illegal** in most jurisdictions and may violate statutes including, but not limited to:
+>
+> * **Brazil** — Lei 12.737/2012, Art. 154-A (invasão de dispositivo informático)
+> * **United States** — Computer Fraud and Abuse Act (18 U.S.C. § 1030), Wiretap Act (18 U.S.C. § 2511)
+> * **European Union** — GDPR (Art. 5, 6), national implementations of the Computer Misuse Directive
+> * **United Kingdom** — Computer Misuse Act 1990
+>
+> The author and contributors **do not condone, encourage, or support** the use of this tool for unauthorized surveillance, data theft, or any form of illegal activity. By using, downloading, or distributing this software, you acknowledge that:
+>
+> 1. You will only use it on devices you own or have written authorization to test
+> 2. You assume all legal liability arising from your use
+> 3. The MIT License governs copyright and redistribution only — it does not grant permission to violate any law
+>
+> **If you are unsure whether your intended use is lawful, consult a qualified legal professional before proceeding.**
+
 ## Features
 
 | Feature | Details |
