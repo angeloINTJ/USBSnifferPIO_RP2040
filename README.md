@@ -30,8 +30,8 @@ The host and device never know the sniffer exists.
 │  D- ─┘    │     │                │     │  Packet Parsing  │
 └───────────┘     └────────────────┘     │  CRC Verification│
                                          └────────┬─────────┘
-                                                   │
-                                           callback(USBPacket)
+                                                  │
+                                          callback(USBPacket)
 ```
 
 1. **PIO program** (1 instruction in a wrap-loop) samples D+ and D- every clock cycle. 16 two-bit samples are packed into a 32-bit word and autopushed to the RX FIFO. Clock divider sets the 8× oversampling rate.
