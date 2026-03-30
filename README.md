@@ -26,8 +26,8 @@ The host and device never know the sniffer exists.
 │  in pins,2│     │  2 × 8 KB      │     │                  │
 │  12 MHz   │     │  (manual swap) │     │  Clock Recovery  │
 │           │     │                │     │  NRZI Decode     │
-│  D+ ─┐   │     │                │     │  Bit Unstuffing  │
-│  D- ─┘   │     │                │     │  Packet Parsing  │
+│  D+ ─┐    │     │                │     │  Bit Unstuffing  │
+│  D- ─┘    │     │                │     │  Packet Parsing  │
 └───────────┘     └────────────────┘     │  CRC Verification│
                                          └────────┬─────────┘
                                                    │
@@ -44,9 +44,9 @@ The host and device never know the sniffer exists.
 USB Cable (Device ↔ Host)           Raspberry Pi Pico
 ┌────────────────────┐              ┌──────────────────┐
 │  VBUS (red)        │              │                  │
-│  D-   (white)      │──[100Ω]────►│ GP3              │
-│  D+   (green)      │──[100Ω]────►│ GP2              │
-│  GND  (black)      │────────────►│ GND              │
+│  D-   (white)      │───[100Ω]────►│ GP3              │
+│  D+   (green)      │───[100Ω]────►│ GP2              │
+│  GND  (black)      │─────────────►│ GND              │
 └────────────────────┘              └──────────────────┘
 ```
 
