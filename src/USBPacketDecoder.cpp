@@ -1,7 +1,7 @@
 /**
  * @file    USBPacketDecoder.cpp
- * @brief   Low-register-pressure SRAM-resident USB 1.1 packet decoder (Cortex-M0+ tuned).
- * @version 2.3.0
+ * @brief   Low-register-pressure SRAM-resident USB 1.1 packet decoder (single & dual-core).
+ * @version 2.4.0
  * @license MIT
  *
  * @author Ângelo Moisés Alves
@@ -242,6 +242,230 @@ USBPacketDecoder::feedSamples(const uint32_t* buffer, uint16_t word_count) {
     _pkt_byte_count   = (uint8_t)pkt_byte_count;
     _acc              = (uint8_t)acc;
     _consecutive_ones = (uint8_t)consecutive_ones;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ *  DUAL-CORE STRIPED DECODER (100% LOSSLESS BOUNDARY OVERLAP)
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+void __attribute__((optimize("O3"), section(".time_critical.usb_striped")))
+USBPacketDecoder::feedSamplesStriped(
+    const uint32_t* buffer,
+    uint16_t        word_count,
+    const uint32_t* next_buffer,
+    uint16_t        tail_words
+) {
+    const uint32_t ALL_J_WORD = (_speed == USBSpeed::LOW_SPEED) ? 0xAAAAAAAAu : 0x55555555u;
+    const uint32_t J_RAW      = (_speed == USBSpeed::LOW_SPEED) ? 0b10u       : 0b01u;
+
+    /*
+     * Step 1: Synchronize at start of this buffer.
+     * If buffer[0] is ALL_J_WORD, we are already cleanly in IDLE with IPG met.
+     * Otherwise we may have landed mid-packet (already finished by the other core):
+     * scan forward until either SE0 (0b00) OR 8 consecutive J bits (impossible
+     * inside any valid USB packet due to 6-ones bit-stuffing).
+     */
+    uint16_t start_w = 0;
+    if (buffer[0] == ALL_J_WORD) {
+        _state       = DecoderState::IDLE;
+        _prev_raw    = (uint8_t)J_RAW;
+        _idle_ipg_ok = true;
+        start_w      = 1;
+    } else {
+        uint32_t j_run = 0;
+        bool synced    = false;
+        for (uint16_t w = 0; w < word_count && !synced; w++) {
+            uint32_t word = buffer[w];
+            if (word == ALL_J_WORD) {
+                _state       = DecoderState::IDLE;
+                _prev_raw    = (uint8_t)J_RAW;
+                _idle_ipg_ok = true;
+                start_w      = w + 1;
+                synced       = true;
+                break;
+            }
+            for (uint32_t s = 0; s < 16; s++) {
+                const uint32_t raw = (word >> (s * 2)) & 0x03u;
+                if (raw == 0u) {
+                    /* Hit EOP of the previous core's boundary packet! */
+                    _state       = DecoderState::IDLE;
+                    _prev_raw    = (uint8_t)J_RAW;
+                    _idle_ipg_ok = false;
+                    /* Process remaining symbols of this word cleanly */
+                    uint32_t rem_word = word >> ((s + 1) * 2);
+                    uint32_t rem_bits = 15 - s;
+                    if (rem_bits > 0) {
+                        /* Feed remaining bits of word w manually via IDLE/SYNC */
+                        for (uint32_t r = 0; r < rem_bits; r++) {
+                            uint32_t sym = rem_word & 0x03u;
+                            rem_word >>= 2;
+                            if (_state == DecoderState::IDLE) {
+                                if (sym == J_RAW) {
+                                    _idle_ipg_ok = true;
+                                    _prev_raw    = (uint8_t)J_RAW;
+                                } else if ((sym - 1u) <= 1u) {
+                                    if (_idle_ipg_ok && _prev_raw == J_RAW) {
+                                        _state          = DecoderState::SYNC;
+                                        _sync_bit_count = 1;
+                                        _idle_ipg_ok    = false;
+                                    }
+                                    _prev_raw = (uint8_t)sym;
+                                } else {
+                                    _idle_ipg_ok = false;
+                                }
+                            } else {
+                                /* Rare: SYNC started inside same word right after SE0 */
+                                uint32_t single = sym;
+                                /* Hand off remaining words starting at w+1 after advancing SYNC */
+                                if ((sym - 1u) > 1u) {
+                                    _state = DecoderState::IDLE; _idle_ipg_ok = false; _prev_raw = (uint8_t)J_RAW;
+                                } else {
+                                    bool same = (sym == _prev_raw);
+                                    _prev_raw = (uint8_t)sym;
+                                    _sync_bit_count++;
+                                    if (_sync_bit_count <= 7) {
+                                        if (same) {
+                                            if (_sync_bit_count > USB_MIN_SYNC_BITS) {
+                                                _state = DecoderState::PACKET_BODY; _pkt_byte_count = 0; _acc = 0x80; _consecutive_ones = 0;
+                                            } else {
+                                                _state = DecoderState::IDLE; _idle_ipg_ok = false; _prev_raw = (uint8_t)J_RAW;
+                                            }
+                                        }
+                                    } else if (same) {
+                                        _state = DecoderState::PACKET_BODY; _pkt_byte_count = 0; _acc = 0x80; _consecutive_ones = 0;
+                                    } else {
+                                        _state = DecoderState::IDLE; _idle_ipg_ok = false; _prev_raw = (uint8_t)J_RAW;
+                                    }
+                                }
+                                (void)single;
+                            }
+                        }
+                    }
+                    start_w = w + 1;
+                    synced  = true;
+                    break;
+                } else if (raw == J_RAW) {
+                    if (++j_run >= 8u) {
+                        _state       = DecoderState::IDLE;
+                        _prev_raw    = (uint8_t)J_RAW;
+                        _idle_ipg_ok = true;
+                        /* Process remaining bits of word w so a SYNC starting in this word is never missed */
+                        uint32_t rem_word = word >> ((s + 1) * 2);
+                        uint32_t rem_bits = 15 - s;
+                        for (uint32_t r = 0; r < rem_bits; r++) {
+                            uint32_t sym = rem_word & 0x03u;
+                            rem_word >>= 2;
+                            if (_state == DecoderState::IDLE) {
+                                if (sym == J_RAW) {
+                                    _idle_ipg_ok = true;
+                                    _prev_raw    = (uint8_t)J_RAW;
+                                } else if ((sym - 1u) <= 1u) {
+                                    if (_idle_ipg_ok && _prev_raw == J_RAW) {
+                                        _state          = DecoderState::SYNC;
+                                        _sync_bit_count = 1;
+                                        _idle_ipg_ok    = false;
+                                    }
+                                    _prev_raw = (uint8_t)sym;
+                                } else {
+                                    _idle_ipg_ok = false;
+                                }
+                            } else {
+                                if ((sym - 1u) > 1u) {
+                                    _state = DecoderState::IDLE; _idle_ipg_ok = false; _prev_raw = (uint8_t)J_RAW;
+                                } else {
+                                    bool same = (sym == _prev_raw);
+                                    _prev_raw = (uint8_t)sym;
+                                    _sync_bit_count++;
+                                    if (_sync_bit_count <= 7) {
+                                        if (same) {
+                                            if (_sync_bit_count > USB_MIN_SYNC_BITS) {
+                                                _state = DecoderState::PACKET_BODY; _pkt_byte_count = 0; _acc = 0x80; _consecutive_ones = 0;
+                                            } else {
+                                                _state = DecoderState::IDLE; _idle_ipg_ok = false; _prev_raw = (uint8_t)J_RAW;
+                                            }
+                                        }
+                                    } else if (same) {
+                                        _state = DecoderState::PACKET_BODY; _pkt_byte_count = 0; _acc = 0x80; _consecutive_ones = 0;
+                                    } else {
+                                        _state = DecoderState::IDLE; _idle_ipg_ok = false; _prev_raw = (uint8_t)J_RAW;
+                                    }
+                                }
+                            }
+                        }
+                        start_w = w + 1;
+                        synced  = true;
+                        break;
+                    }
+                } else {
+                    j_run = 0;
+                }
+            }
+        }
+        if (!synced) return;
+    }
+
+    /* Step 2: Decode the entire main body of this buffer at full speed */
+    if (start_w < word_count) {
+        feedSamples(buffer + start_w, word_count - start_w);
+    }
+
+    /* Step 3: If a packet is still open across the boundary, finish ONLY that
+     * one packet by peeking into next_buffer (1 word at a time until IDLE). */
+    if (_state != DecoderState::IDLE && next_buffer != nullptr) {
+        for (uint16_t tw = 0; tw < tail_words && _state != DecoderState::IDLE; tw++) {
+            uint32_t w = next_buffer[tw];
+            for (uint32_t s = 16; s != 0 && _state != DecoderState::IDLE; s--) {
+                const uint32_t raw = w & 0x03u;
+                w >>= 2;
+                if (_state == DecoderState::PACKET_BODY) {
+                    if ((raw - 1u) <= 1u) {
+                        const uint32_t bit = (raw == _prev_raw) ? 1u : 0u;
+                        _prev_raw = (uint8_t)raw;
+                        if (_consecutive_ones == 6u) {
+                            _consecutive_ones = 0;
+                            if (bit != 0u) { stuffing_errors++; _state = DecoderState::IDLE; }
+                            continue;
+                        }
+                        const uint32_t done = _acc & 1u;
+                        _acc = (uint8_t)((_acc >> 1) | (bit << 7));
+                        _consecutive_ones = bit ? (_consecutive_ones + 1u) : 0u;
+                        if (done) {
+                            if (_pkt_byte_count < USB_MAX_PACKET_BYTES) {
+                                _pkt_bytes[_pkt_byte_count++] = _acc;
+                                _acc = 0x80u;
+                            } else {
+                                overflow_errors++; _state = DecoderState::IDLE;
+                            }
+                        }
+                    } else {
+                        if (raw == 0u && _acc == 0x80u && _pkt_byte_count >= 1u) {
+                            finalizePacket(_pkt_byte_count);
+                        }
+                        _state = DecoderState::IDLE;
+                    }
+                } else {
+                    /* SYNC crossing boundary */
+                    if ((raw - 1u) > 1u) { _state = DecoderState::IDLE; break; }
+                    const bool same = (raw == _prev_raw);
+                    _prev_raw = (uint8_t)raw;
+                    _sync_bit_count++;
+                    if (_sync_bit_count <= 7u) {
+                        if (same) {
+                            if (_sync_bit_count > USB_MIN_SYNC_BITS) {
+                                _state = DecoderState::PACKET_BODY; _pkt_byte_count = 0; _acc = 0x80u; _consecutive_ones = 0;
+                            } else {
+                                sync_errors++; _state = DecoderState::IDLE;
+                            }
+                        }
+                    } else if (same) {
+                        _state = DecoderState::PACKET_BODY; _pkt_byte_count = 0; _acc = 0x80u; _consecutive_ones = 0;
+                    } else {
+                        sync_errors++; _state = DecoderState::IDLE;
+                    }
+                }
+            }
+        }
+    }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

@@ -6,6 +6,7 @@
 USBSnifferPIO	KEYWORD1
 USBPacketDecoder	KEYWORD1
 USBPacket	KEYWORD1
+USBSnifferStats	KEYWORD1
 USBLineState	KEYWORD1
 USBSpeed	KEYWORD1
 USBPacketType	KEYWORD1
@@ -14,10 +15,19 @@ USBPacketType	KEYWORD1
 begin	KEYWORD2
 end	KEYWORD2
 task	KEYWORD2
+taskCore0	KEYWORD2
+enableDualCore	KEYWORD2
+isDualCore	KEYWORD2
 onPacket	KEYWORD2
+onPacketCore0	KEYWORD2
 reset	KEYWORD2
+resetStats	KEYWORD2
+stats	KEYWORD2
+setWarmupBuffers	KEYWORD2
 feedSamples	KEYWORD2
+feedSamplesStriped	KEYWORD2
 decoder	KEYWORD2
+decoderCore0	KEYWORD2
 isRunning	KEYWORD2
 isHIDKeyboardReport	KEYWORD2
 classifyPID	KEYWORD2

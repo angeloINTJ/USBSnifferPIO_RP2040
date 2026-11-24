@@ -1,0 +1,40 @@
+name: Build Examples (RP2040)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+
+      - name: Install Earle Philhower rp2040 core
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
+          arduino-cli core update-index
+          arduino-cli core install rp2040:rp2040
+
+      - name: Compile all examples (default 200 MHz, DMA_IRQ_1)
+        run: |
+          for ex in examples/*/; do
+            echo "=== Compiling $ex ==="
+            arduino-cli compile --warnings all --fqbn rp2040:rp2040:rpipico --library . "$ex"
+          done
+
+      - name: Compile Low-RAM & DMA_IRQ_0 variants
+        run: |
+          arduino-cli compile --fqbn rp2040:rp2040:rpipico \
+            --build-property "compiler.cpp.extra_flags=-DSNIFFER_DMA_BUF_WORDS=1024 -DSNIFFER_DMA_IRQ_INDEX=0" \
+            --library . examples/dual_core_sniffer
+          arduino-cli compile --fqbn rp2040:rp2040:rpipico \
+            --build-property "compiler.cpp.extra_flags=-DSNIFFER_DMA_BUF_COUNT=2" \
+            --library . examples/basic_sniffer

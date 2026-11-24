@@ -43,6 +43,28 @@ Documentação técnica completa das iterações de otimização validadas em ba
 
 ---
 
+## Fase 2 — Dual-Core Paralelo e Mapeamento Completo de Limites (`v1.2.0`)
+
+### Experimento A — Filtro Antecipado de PID (`NO_POLLING`: ignora `SOF`/`NAK`/`IN` no byte 0)
+- **Resultado (`200 MHz` Single-Core):** caiu de `79,7%` → **`72,3%`** (`P8_MAX`: `64,0%` → `59,6%`).
+- **Conclusão:** o gargalo em `200 MHz` single-core não é `finalizePacket()`, e sim o loop bit-a-bit a 12 Mbps; adicionar um 4º estado (`SKIP_TO_EOP`) no loop quente gerou *spill* de registradores no Cortex-M0+. Revertido.
+
+### Experimento B — Dual-Core Paralelo (`enableDualCore(true)` + `taskCore0()`, SEM filtro)
+Anel de 4 buffers DMA rotacionado com 0 ns de gap pelos 2 canais hardware (`ch0`: pares `0, 2`; `ch1`: ímpares `1, 3`), com Core 1 decodificando pares e Core 0 decodificando ímpares com sobreposição exata de fronteira (`SNIFFER_DUALCORE_TAIL_WORDS = 48`):
+
+| Configuração Dual-Core (`-Os` padrão, zero OC) | `10 Hz` | `100–1k Hz` | `5 kHz` | `1 kHz` (`64B 0xFF`) | `1 kHz` (`64B 0x00`) | `MAX` (~10k/s, 64B) | `crc` / `ovf` / `fifo` (`P8_MAX`) |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| **`120 MHz`** (`2048w`, 48 KB RAM) | 98,0% | 94,6–96,0% | 89,5% | 91,6% | 93,3% | 69,6% | 13 / 65 / 1627 |
+| **`133 MHz`** (`2048w`, 48 KB RAM) | **100,0%** | 99,9–100,0% | **100,0%** | **100,0%** | 99,9% | 77,1% | 8 / 37 / 1424 |
+| **`150 MHz`** (`2048w`, 48 KB RAM) | **100,0%** | 99,9–100,0% | 99,7% | **100,0%** | **100,0%** | 87,2% | 9 / 52 / 1454 |
+| **`176 MHz`** (`2048w`, 48 KB RAM) | **100,0%** | **100,0%** | **100,0%** | 99,9% | **100,0%** | **100,0%** | **0 / 0 / 90** |
+| **`200 MHz` Low-RAM** (`1024w`, 31 KB RAM) | **100,0%** | **100,0%** | **100,0%** | **100,0%** | **100,0%** | **100,0%** | **0 / 0 / 0** |
+| **`200 MHz` Padrão** (`2048w`, 48 KB RAM) | **100,0%** | **100,0%** | **100,0%** | **100,0%** | **100,0%** | **100,0%** *(30.371/30.372)* | **0 / 0 / 0** |
+
+**Conclusão:** O modo Dual-Core elimina totalmente a necessidade de overclock — atingindo **100,0% até na saturação Full-Speed (`~10.000 pkt/s`, `64B`)** no clock oficial de **`200 MHz` (`-Os` padrão da IDE)**, inclusive no modo **Low-RAM (`SNIFFER_DMA_BUF_WORDS=1024`, apenas 16 KB de DMA RAM)**!
+
+---
+
 ## Principais Causas-Raiz Resolvidas
 
 1. **Banda impossível em 8× bruto no Cortex-M0+ (1,6% → 35,8%):**

@@ -35,7 +35,9 @@
 #define PIN_DP   2
 
 /// @brief Onboard LED for visual feedback.
+#ifndef PIN_LED
 #define PIN_LED  25
+#endif
 
 /// @brief Sniffer instance.
 USBSnifferPIO sniffer;

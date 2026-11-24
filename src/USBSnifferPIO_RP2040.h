@@ -85,17 +85,59 @@
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /**
- * @brief Size of each DMA buffer in 32-bit words.
+ * @brief Size of each DMA buffer in 32-bit words (override before #include if needed).
  *
  * 2048 words = 8 KB = 32 768 clock-recovered USB bits (1x PIO DPLL).
  *   - Full-Speed (12 Mbps): ~2.73 ms per buffer
  *   - Low-Speed  (1.5 Mbps): ~21.85 ms per buffer
+ * Smaller values (e.g. 1024) save RAM at the cost of higher IRQ rate.
  */
+#ifndef SNIFFER_DMA_BUF_WORDS
 #define SNIFFER_DMA_BUF_WORDS  2048
+#endif
 
-/** @brief Number of hardware ping-pong buffers (2 channels chained 0<->1). */
-#define SNIFFER_DMA_BUF_COUNT  2
+/** @brief Number of DMA ring buffers (must be 2 or 4; 4 required for dual-core). */
+#ifndef SNIFFER_DMA_BUF_COUNT
+#define SNIFFER_DMA_BUF_COUNT  4
+#endif
 #define SNIFFER_DMA_BUF_MASK   (SNIFFER_DMA_BUF_COUNT - 1)
+
+/** @brief Max words peeked into next buffer to finish a boundary packet in dual-core mode. */
+#ifndef SNIFFER_DUALCORE_TAIL_WORDS
+#define SNIFFER_DUALCORE_TAIL_WORDS  48
+#endif
+
+/**
+ * @brief DMA IRQ line used for ping-pong reload (0 = DMA_IRQ_0, 1 = DMA_IRQ_1).
+ *
+ * Defaults to DMA_IRQ_1 with a shared handler so it coexists with libraries
+ * using DMA_IRQ_0 or shared DMA_IRQ_1. Override to 0 if another library claims
+ * DMA_IRQ_1 exclusively.
+ */
+#ifndef SNIFFER_DMA_IRQ_INDEX
+#define SNIFFER_DMA_IRQ_INDEX  1
+#endif
+#if (SNIFFER_DMA_IRQ_INDEX != 0) && (SNIFFER_DMA_IRQ_INDEX != 1)
+#error "SNIFFER_DMA_IRQ_INDEX must be 0 (DMA_IRQ_0) or 1 (DMA_IRQ_1)"
+#endif
+
+/**
+ * @brief Aggregated runtime statistics and active configuration snapshot.
+ */
+struct USBSnifferStats {
+    uint32_t packets_decoded;  ///< Combined packets decoded (Core 1 + Core 0)
+    uint32_t crc_errors;       ///< Combined CRC5/CRC16 errors
+    uint32_t sync_errors;      ///< Combined SYNC errors
+    uint32_t stuffing_errors;  ///< Combined bit-stuffing errors
+    uint32_t overflow_errors;  ///< Combined packet overflow errors
+    uint32_t fifo_overruns;    ///< PIO RX FIFO stall or DMA ring overrun events
+    uint32_t sys_clock_hz;     ///< Detected RP2040 clk_sys frequency (Hz)
+    float    pio_clock_div;    ///< Active PIO clock divider
+    uint16_t dma_buf_words;    ///< Configured words per DMA buffer
+    uint8_t  dma_buf_count;    ///< Configured DMA ring buffer count
+    bool     dual_core;        ///< Whether dual-core striped decoding is active
+    bool     running;          ///< Whether capture is active
+};
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  CLASS USBSnifferPIO
@@ -172,31 +214,55 @@ public:
      */
     void task();
 
-    /* ── Callback ─────────────────────────────────────────────── */
+    /**
+     * @brief Process odd-numbered DMA buffers on Core 0 (dual-core mode).
+     *
+     * Enable via @ref enableDualCore(true), then call @ref task() on Core 1
+     * and @ref taskCore0() on Core 0 for 2x parallel Full-Speed decoding.
+     */
+    void taskCore0();
 
     /**
-     * @brief Register the packet-ready callback.
+     * @brief Enable or disable dual-core striped parallel decoding.
      *
-     * The callback fires inside @ref task() whenever the decoder
-     * produces a complete, CRC-verified packet.
-     *
-     * @param[in] callback Function pointer, or @c nullptr to unregister.
+     * When enabled, Core 1 decodes even buffers (0, 2) and Core 0 decodes
+     * odd buffers (1, 3) with lossless boundary overlap — doubling decode
+     * throughput without overclocking.
      */
+    void enableDualCore(bool enable = true);
+    bool isDualCore() const { return _dual_core; }
+
+    /* ── Callback ─────────────────────────────────────────────── */
+
     void onPacket(USBPacketCallback callback);
+
+    /**
+     * @brief Optional dedicated callback for Core 0 in dual-core mode
+     *        (avoids cross-core contention; defaults to onPacket() callback).
+     */
+    void onPacketCore0(USBPacketCallback callback);
 
     /* ── Accessors ────────────────────────────────────────────── */
 
-    /**
-     * @brief Access the internal decoder (e.g. for statistics).
-     * @return Mutable reference to the USBPacketDecoder.
-     */
-    USBPacketDecoder&       decoder()       { return _decoder; }
+    USBPacketDecoder&       decoder()            { return _decoder; }
+    const USBPacketDecoder& decoder() const      { return _decoder; }
+    USBPacketDecoder&       decoderCore0()       { return _decoder_c0; }
+    const USBPacketDecoder& decoderCore0() const { return _decoder_c0; }
 
     /**
-     * @brief Const access to the internal decoder.
-     * @return Const reference to the USBPacketDecoder.
+     * @brief Return combined statistics (Core 1 + Core 0) and active config.
      */
-    const USBPacketDecoder& decoder() const { return _decoder; }
+    USBSnifferStats stats() const;
+
+    /**
+     * @brief Reset decoder statistics on both Core 1 and Core 0.
+     */
+    void resetStats();
+
+    /**
+     * @brief Configure how many initial DMA buffers are discarded on begin() (default: 2).
+     */
+    void setWarmupBuffers(uint8_t count) { _warmup_config = count; }
 
     /**
      * @brief Check whether capture is active.
@@ -228,14 +294,24 @@ private:
     /** @brief Index of the buffer currently being filled by DMA (0..COUNT-1). */
     volatile uint32_t _dma_wr;
 
-    /** @brief Index of the next completed buffer for task() to decode. */
+    /** @brief Index of the next completed buffer for Core 1 task() to decode. */
     volatile uint32_t _dma_rd;
 
-    /** @brief Count of ring-buffer overwrites when task() falls behind DMA. */
+    /** @brief Index of the next completed odd buffer for Core 0 taskCore0(). */
+    volatile uint32_t _dma_rd_c0;
+
+    /** @brief Next slot toggle for ch0 (0/2) and ch1 (1/3). */
+    volatile uint8_t  _ch0_next_slot;
+    volatile uint8_t  _ch1_next_slot;
+
+    /** @brief Dual-core parallel decode flag. */
+    volatile bool     _dual_core;
+
+    /** @brief Count of ring-buffer overwrites when consumer falls behind DMA. */
     volatile uint32_t _ring_overruns;
 
     /**
-     * @brief Capture ring buffers filled by DMA in DMA_IRQ_1.
+     * @brief Capture ring buffers filled by 2-channel hardware ping-pong DMA.
      */
     uint32_t         _dma_buf[SNIFFER_DMA_BUF_COUNT][SNIFFER_DMA_BUF_WORDS]
                          __attribute__((aligned(4)));
@@ -243,25 +319,16 @@ private:
     /** @brief Active singleton pointer for DMA_IRQ_1 handler. */
     static USBSnifferPIO* _irq_instance;
 
-    /** @brief SRAM-resident DMA_IRQ_1 handler for zero-gap buffer rotation. */
+    /** @brief SRAM-resident DMA_IRQ_1 handler for zero-gap 4-slot rotation. */
     static void dmaIrqHandler();
 
-    /**
-     * @brief Warm-up counter: discards the first N buffers.
-     *
-     * DMA starts capturing immediately in begin().  The first buffers
-     * may contain a packet already in progress on the bus — the decoder
-     * would enter mid-stream, accumulate bits without EOP, and produce
-     * hundreds of spurious overflow_errors.
-     *
-     * Discarding 2 buffers (~5.5 ms at LS) and resetting the decoder
-     * on the last one ensures a clean start.  The value counts down
-     * to zero; once zero, buffers are processed normally.
-     */
     uint8_t          _warmup_remaining;
+    uint8_t          _warmup_config;
 
-    /* ── Decoder ──────────────────────────────────────────────── */
+    /* ── Decoders (Core 1 + optional Core 0) ──────────────────── */
     USBPacketDecoder _decoder;
+    USBPacketDecoder _decoder_c0;
+    bool             _has_c0_cb;
 
     /* ── Internal helpers ─────────────────────────────────────── */
 

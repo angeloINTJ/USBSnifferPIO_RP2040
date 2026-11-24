@@ -1,0 +1,16 @@
+* text=auto eol=lf
+*.cpp text eol=lf
+*.h text eol=lf
+*.ino text eol=lf
+*.pio text eol=lf
+*.md text eol=lf
+*.py text eol=lf
+*.sh text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.properties text eol=lf
+*.txt text eol=lf
+*.bin binary
+*.uf2 binary
+*.elf binary
+*.pcapng binary

@@ -27,16 +27,24 @@
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /** @brief PIO hardware DPLL oversampling factor (8x). */
+#ifndef USB_OVERSAMPLING
 #define USB_OVERSAMPLING      8
+#endif
 
 /** @brief Maximum unstuffed bytes per packet (PID[1] + DATA[64] + CRC16[2] + margin). */
+#ifndef USB_MAX_PACKET_BYTES
 #define USB_MAX_PACKET_BYTES  72
+#endif
 
 /** @brief Maximum raw bits per packet (64B 0xFF worst-case bit-stuffing = 625 bits). */
+#ifndef USB_MAX_PACKET_BITS
 #define USB_MAX_PACKET_BITS   680
+#endif
 
-/** @brief Minimum SYNC alternations required to accept a packet. */
+/** @brief Minimum SYNC alternations required to accept a packet (4..7). */
+#ifndef USB_MIN_SYNC_BITS
 #define USB_MIN_SYNC_BITS     4
+#endif
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  DECODER STATE MACHINE
@@ -65,6 +73,22 @@ public:
 
     void reset();
     void feedSamples(const uint32_t* buffer, uint16_t word_count);
+
+    /**
+     * @brief Decode one independent buffer in dual-core striped mode.
+     *
+     * Skips any partial packet at the start of @p buffer (already finished by
+     * the previous buffer's core), decodes all packets that START inside
+     * @p buffer, and if a packet crosses the end boundary, finishes it by
+     * peeking up to @p tail_words into @p next_buffer until EOP.
+     */
+    void feedSamplesStriped(
+        const uint32_t* buffer,
+        uint16_t        word_count,
+        const uint32_t* next_buffer,
+        uint16_t        tail_words = 48
+    );
+
     void onPacket(USBPacketCallback cb);
 
     /* ── Runtime statistics (volatile for cross-core reads) ───── */
