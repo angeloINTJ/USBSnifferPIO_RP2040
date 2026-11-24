@@ -1,0 +1,31 @@
+name: Publish to PlatformIO Registry
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install PlatformIO CLI
+        run: pip install --upgrade platformio
+
+      - name: Publish library to PlatformIO Registry
+        env:
+          PLATFORMIO_AUTH_TOKEN: ${{ secrets.PLATFORMIO_AUTH_TOKEN }}
+        run: |
+          if [ -z "$PLATFORMIO_AUTH_TOKEN" ]; then
+            echo "ERROR: PLATFORMIO_AUTH_TOKEN secret is not configured."
+            exit 1
+          fi
+          pio pkg publish --no-interactive .

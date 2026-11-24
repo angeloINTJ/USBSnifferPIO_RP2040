@@ -15,13 +15,13 @@ Outputs (updated continuously after every round, safe against Ctrl+C):
 
 Usage examples:
   # Dry run (1 full round, ~45 seconds) WITHOUT sniffer yet:
-  python3 tools/test_bench/stress_8h.py --rounds 1
+  python3 extras/test_bench/stress_8h.py --rounds 1
 
   # Full 8-hour stress test WITH sniffer on /dev/ttyACM0:
-  python3 tools/test_bench/stress_8h.py --hours 8 --sniffer /dev/ttyACM0
+  python3 extras/test_bench/stress_8h.py --hours 8 --sniffer /dev/ttyACM0
 
   # Full 8-hour stress test specifying ports explicitly:
-  python3 tools/test_bench/stress_8h.py --hours 8 --gen /dev/ttyACM2 --sniffer /dev/ttyACM0
+  python3 extras/test_bench/stress_8h.py --hours 8 --gen /dev/ttyACM2 --sniffer /dev/ttyACM0
 """
 
 import argparse

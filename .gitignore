@@ -18,9 +18,9 @@ Thumbs.db
 *~
 
 # Test bench runtime outputs
-tools/test_bench/captures/
-tools/test_bench/results/
-tools/test_bench/stress_8h_live.log
+extras/test_bench/captures/
+extras/test_bench/results/
+extras/test_bench/stress_8h_live.log
 *.pcapng
 __pycache__/
 *.pyc

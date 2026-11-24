@@ -8,13 +8,13 @@ in real time.
 
 Usage examples:
   # Trigger a deterministic 100-packet burst at 100 pkt/s:
-  python3 tools/test_bench/usb_bench.py /dev/ttyACM1 --rate 2 --burst 100
+  python3 extras/test_bench/usb_bench.py /dev/ttyACM1 --rate 2 --burst 100
 
   # Trigger a 1000-packet burst at 1000 pkt/s:
-  python3 tools/test_bench/usb_bench.py /dev/ttyACM1 --rate 4 --burst 1000
+  python3 extras/test_bench/usb_bench.py /dev/ttyACM1 --rate 4 --burst 1000
 
   # Continuous stream for 5 seconds at MAX speed:
-  python3 tools/test_bench/usb_bench.py /dev/ttyACM1 --rate 6 --duration 5
+  python3 extras/test_bench/usb_bench.py /dev/ttyACM1 --rate 6 --duration 5
 """
 
 import argparse

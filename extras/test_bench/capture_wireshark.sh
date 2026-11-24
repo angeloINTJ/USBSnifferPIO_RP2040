@@ -11,7 +11,7 @@ PCAP_FILE="$OUT_DIR/pico2w_${STAMP}.pcapng"
 
 # Verifica tshark e usbmon
 if ! command -v tshark >/dev/null 2>&1; then
-    echo "ERRO: tshark não encontrado. Rode primeiro: ./tools/test_bench/setup_wireshark.sh"
+    echo "ERRO: tshark não encontrado. Rode primeiro: ./extras/test_bench/setup_wireshark.sh"
     exit 1
 fi
 if [ ! -e /dev/usbmon0 ]; then
@@ -45,7 +45,7 @@ echo ""
 echo "=== Capturando na interface ${IFACE} (Dev ${DEV}) por ${DURATION}s ==="
 echo "Arquivo .pcapng: ${PCAP_FILE}"
 echo ">> Agora dispare o burst/envio no Pico 2 W:"
-echo "   python3 tools/test_bench/usb_bench.py ${PICO2W_PORT} --reset-seq --rate 2 --burst 100"
+echo "   python3 extras/test_bench/usb_bench.py ${PICO2W_PORT} --reset-seq --rate 2 --burst 100"
 echo ""
 
 # libpcap/dumpcap precisa de leitura+escrita (0660) em /dev/usbmon*

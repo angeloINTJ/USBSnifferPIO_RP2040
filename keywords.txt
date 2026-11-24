@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════
-#  USBSnifferPIO_RP2040 v1.0 — Arduino IDE Keyword Highlighting
+#  USBSnifferPIO_RP2040 v1.2 — Arduino IDE Keyword Highlighting
 # ═══════════════════════════════════════════════════════
 
 # Classes (KEYWORD1 — orange)

@@ -260,7 +260,7 @@ USBSnifferPIO_RP2040/
 │   ├── hid_filter/              # Address/endpoint filtering + JSON
 │   ├── statistics_monitor/      # Bus health dashboard
 │   └── diagnostic/              # Hardware diagnostic
-├── tools/test_bench/            # Automated Pico 2 W + Wireshark benchmark suite
+├── extras/test_bench/           # Automated Pico 2 W + Wireshark benchmark suite
 ├── library.properties           # Arduino Library Manager metadata
 ├── library.json                 # PlatformIO metadata
 ├── keywords.txt                 # Arduino IDE syntax highlighting

@@ -17,14 +17,14 @@ Suite completa para gerar tráfego USB 1.1 Full-Speed calibrado no **Pico 2 W**,
 
 ### 1. Gravar o gerador atualizado no Pico 2 W (`/dev/ttyACM2`)
 ```bash
-arduino-cli compile --fqbn rp2040:rp2040:rpipico2w tools/test_bench/pico2w_usb_generator
-arduino-cli upload  --fqbn rp2040:rp2040:rpipico2w -p /dev/ttyACM2 tools/test_bench/pico2w_usb_generator
+arduino-cli compile --fqbn rp2040:rp2040:rpipico2w extras/test_bench/pico2w_usb_generator
+arduino-cli upload  --fqbn rp2040:rp2040:rpipico2w -p /dev/ttyACM2 extras/test_bench/pico2w_usb_generator
 ```
 
 ### 2. Gravar o firmware de benchmark no Sniffer RP2040 (`/dev/ttyACM0`)
 ```bash
-arduino-cli compile --fqbn rp2040:rp2040:rpipico --library . tools/test_bench/sniffer_bench_dut
-arduino-cli upload  --fqbn rp2040:rp2040:rpipico -p /dev/ttyACM0 tools/test_bench/sniffer_bench_dut
+arduino-cli compile --fqbn rp2040:rp2040:rpipico --library . extras/test_bench/sniffer_bench_dut
+arduino-cli upload  --fqbn rp2040:rp2040:rpipico -p /dev/ttyACM0 extras/test_bench/sniffer_bench_dut
 ```
 
 ### 3. Ligar o tap físico no cabo do Pico 2 W
@@ -39,17 +39,17 @@ GND (preto) ─────────────► GND
 
 ### 4. Validar rapidamente (1 rodada, ~45 s) antes das 8 horas
 ```bash
-python3 tools/test_bench/stress_8h.py --rounds 1 --sniffer /dev/ttyACM0
+python3 extras/test_bench/stress_8h.py --rounds 1 --sniffer /dev/ttyACM0
 ```
 
 ### 5. Disparar a maratona de 8 horas (com `nohup` / `tmux` se quiser desconectar)
 ```bash
-python3 tools/test_bench/stress_8h.py --hours 8 --sniffer /dev/ttyACM0
+python3 extras/test_bench/stress_8h.py --hours 8 --sniffer /dev/ttyACM0
 ```
 *(Sem o sniffer plugado ainda, basta omitir `--sniffer /dev/ttyACM0` para rodar o baseline Gerador + Wireshark.)*
 
 ### Relatórios Gerados
-A cada rodada concluída, o script atualiza automaticamente em `tools/test_bench/results/stress_<DATA_HORA>/`:
+A cada rodada concluída, o script atualiza automaticamente em `extras/test_bench/results/stress_<DATA_HORA>/`:
 - `REPORT.md` — relatório consolidado em Markdown (pronto para anexar à Discussion #2)
 - `results.csv` — série temporal completa para gráficos
 - `results.jsonl` — log estruturado completo

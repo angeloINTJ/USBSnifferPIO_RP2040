@@ -13,6 +13,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Lint library with arduino-lint
+        uses: arduino/arduino-lint-action@v2
+        with:
+          compliance: strict
+          library-manager: update
+
       - name: Setup Arduino CLI
         uses: arduino/setup-arduino-cli@v2
 

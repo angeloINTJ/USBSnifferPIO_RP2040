@@ -31,8 +31,8 @@
  *
  * ## Build & Upload (arduino-cli)
  *
- *   arduino-cli compile --fqbn rp2040:rp2040:rpipico2w tools/test_bench/pico2w_usb_generator
- *   arduino-cli upload  --fqbn rp2040:rp2040:rpipico2w -p /dev/ttyACM1 tools/test_bench/pico2w_usb_generator
+ *   arduino-cli compile --fqbn rp2040:rp2040:rpipico2w extras/test_bench/pico2w_usb_generator
+ *   arduino-cli upload  --fqbn rp2040:rp2040:rpipico2w -p /dev/ttyACM1 extras/test_bench/pico2w_usb_generator
  */
 
 #include <Arduino.h>

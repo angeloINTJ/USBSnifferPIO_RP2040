@@ -20,10 +20,10 @@ for FREQ in 240 250; do
     echo ">>> Testando ${FREQ} MHz (-O3) — FQBN: ${FQBN}" | tee -a "$LOG_FILE"
     echo "============================================================" | tee -a "$LOG_FILE"
 
-    arduino-cli compile --fqbn "$FQBN" --library . tools/test_bench/sniffer_bench_dut 2>&1 | tail -n 5 | tee -a "$LOG_FILE"
-    arduino-cli upload  --fqbn "$FQBN" -p "$SNIF_PORT" tools/test_bench/sniffer_bench_dut 2>&1 | tee -a "$LOG_FILE"
+    arduino-cli compile --fqbn "$FQBN" --library . extras/test_bench/sniffer_bench_dut 2>&1 | tail -n 5 | tee -a "$LOG_FILE"
+    arduino-cli upload  --fqbn "$FQBN" -p "$SNIF_PORT" extras/test_bench/sniffer_bench_dut 2>&1 | tee -a "$LOG_FILE"
     sleep 2
-    python3 -u tools/test_bench/stress_8h.py --rounds 1 --sniffer "$SNIF_PORT" 2>&1 | tee -a "$LOG_FILE"
+    python3 -u extras/test_bench/stress_8h.py --rounds 1 --sniffer "$SNIF_PORT" 2>&1 | tee -a "$LOG_FILE"
 done
 
 echo "" | tee -a "$LOG_FILE"

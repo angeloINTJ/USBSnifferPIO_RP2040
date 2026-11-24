@@ -34,5 +34,14 @@
     "homepage": "https://github.com/angeloINTJ/USBSnifferPIO_RP2040",
     "license": "MIT",
     "frameworks": "arduino",
-    "platforms": "raspberrypi"
+    "platforms": "raspberrypi",
+    "export": {
+        "exclude": [
+            ".github",
+            ".editorconfig",
+            ".gitattributes",
+            ".gitignore",
+            "extras"
+        ]
+    }
 }
