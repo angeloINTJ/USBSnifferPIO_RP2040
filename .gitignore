@@ -16,3 +16,11 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# Test bench runtime outputs
+tools/test_bench/captures/
+tools/test_bench/results/
+tools/test_bench/stress_8h_live.log
+*.pcapng
+__pycache__/
+*.pyc

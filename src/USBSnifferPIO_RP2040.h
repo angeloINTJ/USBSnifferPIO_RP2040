@@ -87,14 +87,15 @@
 /**
  * @brief Size of each DMA buffer in 32-bit words.
  *
- * 2048 words = 8 KB = 32 768 samples.
- * At 12 MHz (LS 8×) this covers ~2.73 ms — enough for multiple
- * USB packets per SOF frame.
+ * 2048 words = 8 KB = 32 768 clock-recovered USB bits (1x PIO DPLL).
+ *   - Full-Speed (12 Mbps): ~2.73 ms per buffer
+ *   - Low-Speed  (1.5 Mbps): ~21.85 ms per buffer
  */
 #define SNIFFER_DMA_BUF_WORDS  2048
 
-/** @brief Number of ping-pong buffers. */
+/** @brief Number of hardware ping-pong buffers (2 channels chained 0<->1). */
 #define SNIFFER_DMA_BUF_COUNT  2
+#define SNIFFER_DMA_BUF_MASK   (SNIFFER_DMA_BUF_COUNT - 1)
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  CLASS USBSnifferPIO
@@ -220,22 +221,30 @@ private:
     /**
      * @brief DMA channel handles.
      *
-     * Only _dma_chan[0] is used (manual ping-pong).
-     * _dma_chan[1] is kept for structural compatibility, fixed at -1.
+     * Only _dma_chan[0] is used (IRQ-driven 4-buffer ring).
      */
-    int              _dma_chan[SNIFFER_DMA_BUF_COUNT];
+    int              _dma_chan[2];
 
-    /** @brief Index of the buffer currently being filled by DMA (0 or 1). */
-    int              _active_buf;
+    /** @brief Index of the buffer currently being filled by DMA (0..COUNT-1). */
+    volatile uint32_t _dma_wr;
+
+    /** @brief Index of the next completed buffer for task() to decode. */
+    volatile uint32_t _dma_rd;
+
+    /** @brief Count of ring-buffer overwrites when task() falls behind DMA. */
+    volatile uint32_t _ring_overruns;
 
     /**
-     * @brief Two capture buffers for manual ping-pong.
-     *
-     * While DMA fills _dma_buf[_active_buf], the decoder
-     * processes _dma_buf[_active_buf ^ 1].
+     * @brief Capture ring buffers filled by DMA in DMA_IRQ_1.
      */
     uint32_t         _dma_buf[SNIFFER_DMA_BUF_COUNT][SNIFFER_DMA_BUF_WORDS]
                          __attribute__((aligned(4)));
+
+    /** @brief Active singleton pointer for DMA_IRQ_1 handler. */
+    static USBSnifferPIO* _irq_instance;
+
+    /** @brief SRAM-resident DMA_IRQ_1 handler for zero-gap buffer rotation. */
+    static void dmaIrqHandler();
 
     /**
      * @brief Warm-up counter: discards the first N buffers.

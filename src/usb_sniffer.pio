@@ -1,32 +1,50 @@
 ;
 ; @file usb_sniffer.pio
-; @brief PIO program for continuous passive USB line sampling.
+; @brief PIO hardware DPLL for passive USB 1.1 sampling (Low-Speed & Full-Speed).
 ;
-; Samples two consecutive GPIO pins (D+ and D-) every clock cycle.
-; Each sample occupies 2 bits in the ISR.  With autopush configured
-; at 32 bits, the PIO pushes one word containing 16 samples to the
-; RX FIFO automatically — no CPU intervention required.
+; Runs at 8x bit rate (12 MHz for LS, 96 MHz for FS), tracks edges on D+
+; (JMP_PIN), and captures one 2-bit [D+, D-] symbol at the exact center
+; of each USB bit period (1x bit-rate output, 16 USB bits per 32-bit word).
 ;
-; Clock divisor determines the effective sample rate:
-;
-;   Speed       Bit Rate    Oversample   PIO Rate   Divider (@ 120 MHz)
-;   ─────────   ─────────   ──────────   ────────   ───────────────────
-;   Low-Speed   1.5 Mbps    8×           12 MHz     10.0
-;   Full-Speed  12  Mbps    8×           96 MHz     1.25
-;
-; The DMA engine drains the FIFO into RAM ping-pong buffers.
-;
-; @note This is the simplest possible PIO program — a single
-;       instruction in a tight loop.  All decoding is done in software.
+; This reduces DMA/CPU bandwidth by 8x compared to raw 8x oversampling,
+; allowing the RP2040 Cortex-M0+ to decode Full-Speed (12 Mbps) traffic
+; in real time.
 ;
 ; @see usb_sniffer.pio.h for the pre-compiled header.
-;
 ; @author Ângelo Moisés Alves
-; @version 1.0.0
+; @version 2.0.0
 ;
 
 .program usb_sniffer
 
-.wrap_target
-    in pins, 2          ; Read D+ and D- simultaneously (1 cycle)
-.wrap
+public sample_high:
+    in pins, 2          ; t=4:  sample center of bit (D+ == 1)
+    nop                 ; t=5:  guard cycle
+    jmp pin, h_t7       ; t=6:  if D+==1 continue; else falling edge at t=6
+    jmp sample_low [2]  ; t=7..9 -> sample_low at t=10 (6 + 4)
+h_t7:
+    jmp pin, h_t8       ; t=7:  falling edge at t=7?
+    jmp sample_low [2]  ; t=8..10 -> sample_low at t=11 (7 + 4)
+h_t8:
+    jmp pin, h_t9       ; t=8:  falling edge at t=8 (nominal)?
+    jmp sample_low [2]  ; t=9..11 -> sample_low at t=12 (8 + 4)
+h_t9:
+    jmp pin, h_t10      ; t=9:  falling edge at t=9?
+    jmp sample_low [2]  ; t=10..12 -> sample_low at t=13 (9 + 4)
+h_t10:
+    jmp pin, h_noedge   ; t=10: falling edge at t=10?
+    jmp sample_low [2]  ; t=11..13 -> sample_low at t=14 (10 + 4)
+h_noedge:
+    jmp sample_high     ; t=11: no edge -> sample_high at t=12 (4 + 8)
+
+sample_low:
+    in pins, 2          ; t=4:  sample center of bit (D+ == 0)
+    nop                 ; t=5:  guard cycle
+    jmp pin, edge_hi    ; t=6:  rising edge at t=6?
+    jmp pin, edge_hi    ; t=7:  rising edge at t=7?
+    jmp pin, edge_hi    ; t=8:  rising edge at t=8 (nominal)?
+    jmp pin, edge_hi    ; t=9:  rising edge at t=9?
+    jmp pin, edge_hi    ; t=10: rising edge at t=10?
+    jmp sample_low      ; t=11: no edge -> sample_low at t=12 (4 + 8)
+edge_hi:
+    jmp sample_high [2] ; t=E+1..E+3 -> sample_high at t=E+4

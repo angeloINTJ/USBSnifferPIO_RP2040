@@ -1,7 +1,7 @@
 {
     "name": "USBSnifferPIO_RP2040",
-    "version": "1.0.0",
-    "description": "Passive USB 1.1 packet sniffer using the RP2040 PIO coprocessor. Deterministic 8x oversampled line sampling via a single PIO state machine, DMA ping-pong buffering for zero-copy transfer, and a full software decoder (clock recovery, NRZI, bit-unstuffing, CRC5/CRC16). Callback-driven API with structured USBPacket delivery. Dual-core ready.",
+    "version": "1.1.0",
+    "description": "Passive USB 1.1 packet sniffer using the RP2040 PIO coprocessor. 22-instruction PIO hardware 8x DPLL, zero-gap 2-channel DMA ping-pong buffering, and an SRAM-resident -O3 decoder (inline NRZI, bit-unstuffing, table-accelerated CRC5/CRC16). Callback-driven API with structured USBPacket delivery. Dual-core ready.",
     "keywords": [
         "usb",
         "sniffer",

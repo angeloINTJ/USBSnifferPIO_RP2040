@@ -1,20 +1,17 @@
 /**
  * @file    usb_sniffer.pio.h
- * @brief   Pre-compiled PIO program and state-machine initializer.
- * @version 1.0.0
+ * @brief   Pre-compiled PIO hardware DPLL program and state-machine initializer.
+ * @version 2.0.0
  * @license MIT
  *
  * @details
- *   This header is the compiled equivalent of @c usb_sniffer.pio.
- *   It can be regenerated with:
- *   @code
- *     pioasm usb_sniffer.pio usb_sniffer.pio.h
- *   @endcode
+ *   Compiled from @c usb_sniffer.pio via pioasm.
+ *   Implements an 8x edge-resynchronized hardware DPLL on D+ (JMP_PIN) that
+ *   outputs 1x bit-rate 2-bit [D+, D-] symbols at exact bit center (t = 4/8).
  *
- *   Contents:
- *   - Binary PIO instruction array
- *   - @c pio_program descriptor
- *   - @ref usb_sniffer_program_init() — full SM configuration
+ *   - 22 instructions (fits in 32-instruction PIO block with 10 slots free)
+ *   - 8x lower DMA/CPU bandwidth vs raw 8x oversampling
+ *   - Works for both Low-Speed (1.5 Mbps @ 12 MHz PIO) and Full-Speed (12 Mbps @ 96 MHz PIO)
  *
  * @author Ângelo Moisés Alves
  */
@@ -25,51 +22,50 @@
 #include "hardware/pio.h"
 
 /* ═══════════════════════════════════════════════════════════════════════════
- *  COMPILED PROGRAM
+ *  COMPILED PROGRAM (22 instructions — hardware 8x DPLL)
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-/**
- * @brief Compiled PIO instruction(s).
- *
- * Single instruction: @c "in pins, 2"
- * Encoding: @c 0100_0000_0000_0010 = 0x4002
- */
+#define usb_sniffer_wrap_target 0
+#define usb_sniffer_wrap        21
+
 static const uint16_t usb_sniffer_program_instructions[] = {
-    //     .wrap_target
-    0x4002,  // 0: in pins, 2
-    //     .wrap
+            //     .wrap_target
+    0x4002, //  0: in     pins, 2
+    0xa042, //  1: nop
+    0x00c4, //  2: jmp    pin, 4
+    0x020d, //  3: jmp    13                     [2]
+    0x00c6, //  4: jmp    pin, 6
+    0x020d, //  5: jmp    13                     [2]
+    0x00c8, //  6: jmp    pin, 8
+    0x020d, //  7: jmp    13                     [2]
+    0x00ca, //  8: jmp    pin, 10
+    0x020d, //  9: jmp    13                     [2]
+    0x00cc, // 10: jmp    pin, 12
+    0x020d, // 11: jmp    13                     [2]
+    0x0000, // 12: jmp    0
+    0x4002, // 13: in     pins, 2
+    0xa042, // 14: nop
+    0x00d5, // 15: jmp    pin, 21
+    0x00d5, // 16: jmp    pin, 21
+    0x00d5, // 17: jmp    pin, 21
+    0x00d5, // 18: jmp    pin, 21
+    0x00d5, // 19: jmp    pin, 21
+    0x000d, // 20: jmp    13
+    0x0200, // 21: jmp    0                      [2]
+            //     .wrap
 };
 
 /** @brief PIO program descriptor for @c pio_add_program(). */
 static const struct pio_program usb_sniffer_program = {
     .instructions = usb_sniffer_program_instructions,
-    .length       = 1,
-    .origin       = -1  ///< Any available offset
+    .length       = 22,
+    .origin       = -1  ///< Relocatable anywhere in PIO instruction memory
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  STATE MACHINE INITIALIZER
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-/**
- * @brief Initialize a PIO state machine for USB line sampling.
- *
- * Configures pin mapping, shift register, FIFO joining, and clock
- * divider.  After this call the SM is running and pushing samples
- * into the RX FIFO.
- *
- * @param[in] pio    PIO instance (@c pio0 or @c pio1).
- * @param[in] sm     State machine index (0–3).
- * @param[in] offset Program offset returned by @c pio_add_program().
- * @param[in] pin_dp GPIO number of the D+ pin.
- *                   D- @b must be @c pin_dp+1.
- * @param[in] div    Clock divider.
- *                   - 10.0  for Low-Speed  8× oversampling @ 120 MHz
- *                   -  1.25 for Full-Speed 8× oversampling @ 120 MHz
- *
- * @pre System clock must be set before calling this function.
- * @pre @c pin_dp and @c pin_dp+1 must not be used by other peripherals.
- */
 static inline void usb_sniffer_program_init(
     PIO   pio,
     uint  sm,
@@ -87,20 +83,18 @@ static inline void usb_sniffer_program_init(
     gpio_set_input_hysteresis_enabled(pin_dp,     true);
     gpio_set_input_hysteresis_enabled(pin_dp + 1, true);
 
-    /* Assign pins to the correct PIO instance.
-     * NOTE: gpio_set_function() expects gpio_function_t (typed enum).
-     * The explicit cast is required on arduino-pico core >= 5.x,
-     * which no longer allows implicit conversion from uint to enum. */
+    /* Assign pins to the correct PIO instance */
     gpio_function_t pio_func = (gpio_function_t)(GPIO_FUNC_PIO0 + (pio == pio1 ? 1 : 0));
     gpio_set_function(pin_dp,     pio_func);
     gpio_set_function(pin_dp + 1, pio_func);
 
     /* Build SM configuration */
     pio_sm_config c = pio_get_default_sm_config();
-    sm_config_set_wrap(&c, offset, offset);        /* Single-instruction wrap  */
-    sm_config_set_in_pins(&c, pin_dp);             /* IN base = D+             */
-    sm_config_set_in_shift(&c, true, true, 32);    /* Shift right, autopush@32 */
-    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX); /* 8-deep RX FIFO          */
+    sm_config_set_wrap(&c, offset + usb_sniffer_wrap_target, offset + usb_sniffer_wrap);
+    sm_config_set_in_pins(&c, pin_dp);             /* IN base = D+ (bit0=D+, bit1=D-) */
+    sm_config_set_jmp_pin(&c, pin_dp);             /* JMP pin = D+ (edge DPLL)        */
+    sm_config_set_in_shift(&c, true, true, 32);    /* Shift right, autopush @ 32 bits */
+    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX); /* 8-deep RX FIFO                  */
     sm_config_set_clkdiv(&c, div);
 
     /* Apply and start */
