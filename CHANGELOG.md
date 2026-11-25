@@ -5,6 +5,17 @@ All notable changes to `USBSnifferPIO_RP2040` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- `src/usb_sniffer.pio.h` is now pioasm output generated from `src/usb_sniffer.pio` (pioasm 2.3.0, the version installed with arduino-pico 6.3.1), instead of a hand-written copy. The state-machine initializer moved into the `.pio` file's `c-sdk` block.
+  - The PIO program is the same 22 instructions.
+  - On 2026-11-25 all 13 firmware images that the release checks build (examples, build variants and bench sketches) were byte-identical to v1.2.1 with arduino-pico 6.3.1.
+  - The build no longer warns that `pio_program::pio_version` (and, on RP2350, `used_gpio_ranges`) has no initializer.
+
+### Fixed
+- The README listed arduino-pico 3.x as supported, but v1.2.1 does not compile on 3.9.5: its pico-sdk 1.5.1 has no `gpio_function_t`. The requirement now reads 4.0 or later. On 2026-11-25 the library compiled on 4.0.0 (pico-sdk 2.0.0) and 6.3.1.
+
 ## [1.2.1] - 2026-11-25
 
 ### Fixed
