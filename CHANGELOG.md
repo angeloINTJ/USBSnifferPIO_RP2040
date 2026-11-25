@@ -5,7 +5,7 @@ All notable changes to `USBSnifferPIO_RP2040` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.2.1] - 2026-11-25
 
 ### Fixed
 - **Dual-core decoding dropped packets at DMA buffer boundaries.** `feedSamplesStriped()` now gives each packet to the buffer where its SYNC starts. Each core re-reads the last `SNIFFER_DUALCORE_TAIL_WORDS` words of the previous buffer from the first symbol after which every decoder state converges (an SE0, or the 10th J in a row), so at the boundary it is in the state the previous buffer's core reaches, and it finishes its own last packet in the next buffer.

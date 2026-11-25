@@ -1,7 +1,7 @@
 /**
  * @file    USBSnifferPIO_RP2040.h
  * @brief   Top-level passive USB sniffer for RP2040.
- * @version 1.2.0
+ * @version 1.2.1
  * @license MIT
  *
  * @details
