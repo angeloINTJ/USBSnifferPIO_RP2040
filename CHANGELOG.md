@@ -5,6 +5,26 @@ All notable changes to `USBSnifferPIO_RP2040` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Dual-core decoding dropped packets at DMA buffer boundaries.** `feedSamplesStriped()` now gives each packet to the buffer where its SYNC starts. Each core re-reads the last `SNIFFER_DUALCORE_TAIL_WORDS` words of the previous buffer from the first symbol after which every decoder state converges (an SE0, or the 10th J in a row), so at the boundary it is in the state the previous buffer's core reaches, and it finishes its own last packet in the next buffer.
+  - Hardware bench (2026-11-25, 200 MHz `-Os`, Pico 2 W generator, Wireshark as reference): v1.2.0 lost 41 of 182,602 packets with 2048-word buffers (5 rounds) and 54 of 109,673 with 1024-word buffers (3 rounds). v1.2.1 lost none of 183,913 and of 182,730 (5 rounds each), with no CRC, SYNC, stuffing or overflow error. Single-core capture was the same in both versions. Those v1.2.1 rounds ran the code from before the next three fixes in this list, which do not change how valid traffic is decoded; a confirmation run with the released sources (3 rounds with 2048 words, 2 with 1024) also lost none of 109,640 and 73,005 packets.
+  - Host test (30,000 polling transactions per case): v1.2.0 lost 34 of 76,299 packets (Full-Speed, 2048 words), 82 of 76,497 (1024 words) and 25 of 74,994 (Low-Speed); v1.2.1 returns all of them, and single-core output is unchanged.
+- The resynchronization point is the 10th J in a row, not the 8th: after a bit-stuffing error the decoder is still waiting for the inter-packet gap, so with a corrupted stream the 8th J could start the next SYNC two symbols early.
+- `feedSamplesStriped()` could read past `next_buffer` when `margin_words` was larger than `word_count`. Only a direct call to the decoder could do that; it was also in v1.2.0.
+- `reset()` no longer touches the dual-core ownership flags, so a reset from the other core cannot turn emission back on while a buffer is being re-read.
+- Removed a shift by 32 bits (undefined behaviour) from the old start-of-buffer scan.
+
+### Added
+- **Host-side decoder test (`extras/host_test/`)**, run by CI with AddressSanitizer and UBSan. It synthesizes Full-Speed and Low-Speed traffic, compares single-core and dual-core decoding packet by packet, slides a transaction across a buffer boundary one symbol at a time, checks corrupted packets next to a boundary, and keeps single-core output on a corrupted stream identical to v1.2.0.
+
+### Changed
+- `USBPacketDecoder::feedSamplesStriped()` takes an optional fifth argument, `prev_buffer`; the four-argument form still compiles. `SNIFFER_DUALCORE_TAIL_WORDS` now also sets how much of the previous buffer is re-read, and a `static_assert` checks that it covers the longest packet (at least 44 words).
+- The library takes about 3 KB less RAM and flash, because the v1.2.0 `feedSamplesStriped()` alone was 3,474 bytes of SRAM-resident code. A minimal dual-core sketch minus an empty one (2048-word buffers, arduino-pico 6.3.1, 2026-11-25): RAM 38,732 → 35,748 bytes, flash image 8,896 → 5,912 bytes.
+- In dual-core mode, error counters are exact for valid traffic. With a corrupted stream, an error in a packet that crosses a buffer boundary can be counted by both cores, and after a stretch with no resynchronization point (no SE0, no run of 10 J) packets and errors up to the next one can be missed; the README says so.
+- README: dual-core figures re-measured on 2026-11-25 against Wireshark. The v1.2.0 rows had been computed against the count the host program reads, which at the maximum rate misses about 6 packets per round. RAM corrected from ~28 KB to ~35 KB.
+
 ## [1.2.0] - 2026-11-24
 
 ### Added

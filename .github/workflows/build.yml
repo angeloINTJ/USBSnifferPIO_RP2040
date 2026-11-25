@@ -19,6 +19,9 @@ jobs:
           compliance: strict
           library-manager: update
 
+      - name: Run host-side decoder test (no hardware)
+        run: make -C extras/host_test
+
       - name: Setup Arduino CLI
         uses: arduino/setup-arduino-cli@v2
 

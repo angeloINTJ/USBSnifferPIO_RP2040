@@ -1,11 +1,13 @@
 /**
  * @file    dual_core_sniffer.ino
- * @brief   High-throughput Dual-Core Full-Speed USB 1.1 sniffer (200 MHz, zero overclock).
+ * @brief   Dual-core Full-Speed USB 1.1 sniffer at the default 200 MHz clock.
  *
- * Demonstrates USBSnifferPIO_RP2040 v1.2.0 Dual-Core striped parallel decoding:
+ * Demonstrates USBSnifferPIO_RP2040 dual-core striped decoding:
  *   - Core 1 decodes even DMA buffers (slots 0, 2) via sniffer.task()
  *   - Core 0 decodes odd  DMA buffers (slots 1, 3) via sniffer.taskCore0()
- *   - Achieves 100% lossless Full-Speed (12 Mbps) capture at the official 200 MHz clock
+ *   - Each packet is decoded by the core of the buffer where its SYNC starts.
+ *     With v1.2.1 at 200 MHz, the bench lost no Full-Speed packet up to
+ *     ~9,900 pkt/s of 64-byte packets on 2026-11-25 (see the README).
  *
  * ## Wiring
  *

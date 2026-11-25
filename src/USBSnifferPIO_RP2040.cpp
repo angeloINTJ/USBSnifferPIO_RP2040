@@ -301,8 +301,9 @@ USBSnifferPIO::task() {
         _dma_rd = rd_idx + 1u;
     } else {
         /* ── Dual-core mode: Core 1 decodes EVEN buffers (0, 2, 4...) ──
-         * Wait until wr >= rd_idx + 2 so next_buffer (slot+1) is 100% filled
-         * for lossless boundary-packet completion. */
+         * Wait until wr >= rd_idx + 2 so next_buffer (slot + 1) is complete: the
+         * decoder reads the end of the previous buffer and the start of the next
+         * one to handle packets that cross a boundary. */
         if ((int32_t)(wr - rd_idx) < 2) return;
 
         const uint32_t slot      = rd_idx & SNIFFER_DMA_BUF_MASK;
@@ -327,9 +328,16 @@ USBSnifferPIO::task() {
             _decoder.fifo_overruns += ovf;
         }
 
+        /* The previous slot is the one DMA refills next (index rd_idx + 3). Its last
+         * SNIFFER_DUALCORE_TAIL_WORDS words, read first, stay intact until the DMA
+         * reaches them, that many words before index rd_idx + 3 completes (~5.4 ms after
+         * next_slot completes at Full-Speed with 2048 words; 48 words are ~64 us). The
+         * overrun check fires when index rd_idx + 3 completes, so a core that starts that
+         * late is still decoding then and gets reported. */
         _decoder.feedSamplesStriped(
             _dma_buf[slot], SNIFFER_DMA_BUF_WORDS,
-            _dma_buf[next_slot], SNIFFER_DUALCORE_TAIL_WORDS
+            _dma_buf[next_slot], SNIFFER_DUALCORE_TAIL_WORDS,
+            (rd_idx > 0u) ? _dma_buf[(rd_idx - 1u) & SNIFFER_DMA_BUF_MASK] : nullptr
         );
         _dma_rd = rd_idx + 2u;
     }
@@ -351,9 +359,11 @@ USBSnifferPIO::taskCore0() {
     const uint32_t slot      = rd_idx & SNIFFER_DMA_BUF_MASK;
     const uint32_t next_slot = (rd_idx + 1u) & SNIFFER_DMA_BUF_MASK;
 
+    /* Same previous-slot timing as in task(). */
     _decoder_c0.feedSamplesStriped(
         _dma_buf[slot], SNIFFER_DMA_BUF_WORDS,
-        _dma_buf[next_slot], SNIFFER_DUALCORE_TAIL_WORDS
+        _dma_buf[next_slot], SNIFFER_DUALCORE_TAIL_WORDS,
+        (rd_idx > 0u) ? _dma_buf[(rd_idx - 1u) & SNIFFER_DMA_BUF_MASK] : nullptr
     );
     _dma_rd_c0 = rd_idx + 2u;
 }

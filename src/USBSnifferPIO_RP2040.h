@@ -102,10 +102,17 @@
 #endif
 #define SNIFFER_DMA_BUF_MASK   (SNIFFER_DMA_BUF_COUNT - 1)
 
-/** @brief Max words peeked into next buffer to finish a boundary packet in dual-core mode. */
+/**
+ * @brief Words read from the end of the previous buffer and from the start of the next one
+ *        to resolve packets that cross a buffer boundary in dual-core mode.
+ */
 #ifndef SNIFFER_DUALCORE_TAIL_WORDS
 #define SNIFFER_DUALCORE_TAIL_WORDS  48
 #endif
+static_assert(SNIFFER_DUALCORE_TAIL_WORDS * 16 >= USB_MAX_PACKET_BITS + 16,
+              "SNIFFER_DUALCORE_TAIL_WORDS must cover the longest packet");
+static_assert(SNIFFER_DUALCORE_TAIL_WORDS < SNIFFER_DMA_BUF_WORDS,
+              "SNIFFER_DUALCORE_TAIL_WORDS must be smaller than SNIFFER_DMA_BUF_WORDS");
 
 /**
  * @brief DMA IRQ line used for ping-pong reload (0 = DMA_IRQ_0, 1 = DMA_IRQ_1).
@@ -226,8 +233,9 @@ public:
      * @brief Enable or disable dual-core striped parallel decoding.
      *
      * When enabled, Core 1 decodes even buffers (0, 2) and Core 0 decodes
-     * odd buffers (1, 3) with lossless boundary overlap — doubling decode
-     * throughput without overclocking.
+     * odd buffers (1, 3). A packet is decoded by the core of the buffer where
+     * its SYNC starts; each core also reads the end of the previous buffer and
+     * the start of the next one to handle packets that cross a boundary.
      */
     void enableDualCore(bool enable = true);
     bool isDualCore() const { return _dual_core; }

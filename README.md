@@ -43,14 +43,14 @@ The host and device never know the sniffer exists.
 | **Full protocol decode** | Handles worst-case 64-byte `0xFF` bit-stuffing (680-bit buffer) + `fifo_overruns` tracking |
 | **Callback API** | Receive structured `USBPacket` with PID, address, endpoint, payload |
 | **Dual-core ready** | Capture on Core 1, process/display on Core 0 |
-| **Compact resources** | 1 PIO state machine (22 instructions), 2 DMA channels, ~28 KB RAM |
+| **Compact resources** | 1 PIO state machine (22 instructions), 2 DMA channels, ~35 KB RAM (~19 KB in Low-RAM mode) |
 
 ## How it works
 
 ```
 ┌──────────────┐     ┌──────────────────────┐     ┌────────────────────┐
 │  PIO SM      │────►│ 2-Ch HW Ping-Pong DMA│────►│ USBPacketDecoder   │
-│  8× HW DPLL  │     │ 2 × 8 KB (ch0 ↔ ch1) │     │ (SRAM + -O3)       │
+│  8× HW DPLL  │     │ 4 × 8 KB ring buffer │     │ (SRAM + -O3)       │
 │  22 instr.   │     │ 0 ns gap + DMA_IRQ_1 │     │                    │
 │  D+ ─┐ (JMP) │     └──────────────────────┘     │ SYNC + Inline NRZI │
 │  D- ─┘       │                                  │ Bit Unstuffing     │
@@ -61,7 +61,7 @@ The host and device never know the sniffer exists.
 ```
 
 1. **PIO hardware DPLL** (22 instructions) runs at 8× the USB bit rate (12 MHz for LS, 96 MHz for FS), tracks edges on `D+` (`JMP_PIN`), and samples `[D+, D-]` at exact bit center (`t = 4/8`). 16 clock-recovered USB bits are packed into each 32-bit word and autopushed to the 8-deep RX FIFO — cutting DMA and CPU bandwidth by **8×** compared to raw oversampling.
-2. **Zero-gap 2-channel hardware ping-pong DMA** chains two channels (`ch0 ↔ ch1`) across two 8 KB buffers. When one channel finishes, hardware switches immediately (0 ns gap) while `DMA_IRQ_1` safely resets the inactive channel's `WRITE_ADDR` and `TRANS_COUNT` with a full `2.73 ms` (FS) / `21.85 ms` (LS) margin — eliminating both inter-buffer stalls and the `WRITE_ADDR` race condition.
+2. **Zero-gap 2-channel hardware ping-pong DMA** chains two channels (`ch0 ↔ ch1`) across a ring of four 8 KB buffers (`ch0` fills buffers 0 and 2, `ch1` fills 1 and 3). When one channel finishes, hardware switches immediately (0 ns gap) while `DMA_IRQ_1` safely resets the inactive channel's `WRITE_ADDR` and `TRANS_COUNT` with a full `2.73 ms` (FS) / `21.85 ms` (LS) margin — eliminating both inter-buffer stalls and the `WRITE_ADDR` race condition.
 3. **SRAM-resident `-O3` decoder** runs directly from `.time_critical` RAM (even when the IDE is set to `-Os`), skipping all-J idle words in O(1), performing inline NRZI decoding, bit-unstuffing, sentinel-bit byte packing, PID lookup, and table-accelerated CRC5/CRC16 verification.
 
 ## Performance & Benchmarks (Full-Speed 12 Mbps)
@@ -78,14 +78,19 @@ Validated on a real hardware test bench comparing **Raspberry Pi Pico 2 W** (cal
 | `v1.2.0` **Dual-Core** (`133 MHz -Os`, zero OC) | **100.0%** | 99.9–100.0% | **100.0%** | **100.0%** | 99.9% | 77.1% | 8 / 1424 |
 | `v1.2.0` **Dual-Core** (`150 MHz -Os`, zero OC) | **100.0%** | 99.9–100.0% | 99.7% | **100.0%** | **100.0%** | 87.2% | 9 / 1454 |
 | `v1.2.0` **Dual-Core** (`176 MHz -Os`, zero OC) | **100.0%** | **100.0%** | **100.0%** | 99.9% | **100.0%** | **100.0%** | **0 / 90** |
-| `v1.2.0` **Dual-Core Low-RAM** (`200 MHz`, `1024w`) | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **0 / 0** |
-| **`v1.2.0` Dual-Core (`200 MHz -Os`, OFFICIAL)** | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **100.0%** *(30,371/30,372)* | **0 / 0** |
+| `v1.2.0` **Dual-Core** (`200 MHz -Os`, 2026-11-25, 5 rounds) | **100.0%** | 99.96–99.98% | 99.98% | 99.98% | 99.96% | 99.978% *(152,069/152,102)* | 0 / 0 |
+| `v1.2.1` **Dual-Core** (`200 MHz -Os`, 2026-11-25, 5 rounds) | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **100.0%** *(153,413/153,413)* | **0 / 0** |
+| `v1.2.0` **Dual-Core Low-RAM** (`200 MHz`, `1024w`, 2026-11-25, 3 rounds) | **100.0%** | 99.87–100.0% | 99.90% | 99.93% | **100.0%** | 99.952% *(91,329/91,373)* | 0 / 2 |
+| `v1.2.1` **Dual-Core Low-RAM** (`200 MHz`, `1024w`, 2026-11-25, 5 rounds) | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **100.0%** | **100.0%** *(152,230/152,230)* | 0 / 4 |
+| `v1.2.1` Single-Core (`200 MHz -Os`, 2026-11-25, 3 rounds) | 79.7% | 78.8–79.6% | 75.0% | 76.6% | 77.3% | 59.2% | 3 / 4107 |
 
-> **Dual-Core Parallel Mode (`v1.2.0`) — 100% Lossless Full-Speed with ZERO Overclocking:**
-> Enable `sniffer.enableDualCore(true)` on Core 1 and call `sniffer.taskCore0()` in Core 0's `loop()`. Core 1 decodes even DMA buffers (`0, 2`) while Core 0 decodes odd buffers (`1, 3`) with lossless boundary overlap — achieving **100.0% capture even at ~10,000 pkt/s (64B) Full-Speed saturation at the official `200 MHz` clock (`-Os` default, zero overclocking)**, and `99.9–100%` up to `5,000 pkt/s` even down at `133 MHz`!
+Rows dated 2026-11-25 are an A/B run of `v1.2.0` against `v1.2.1` on the same bench and compare the sniffer with Wireshark. Earlier rows compare it with the count the host program reads, which in the MAX profile misses about 6 packets per round that Wireshark sees, so their MAX figures read slightly high. In the `1024w` rows, the few FIFO overruns happen while the bench firmware resets its counters between profiles, in both versions, and no packet was lost to them.
+
+> **Dual-core mode at the default `200 MHz` clock (`v1.2.1`):**
+> Enable `sniffer.enableDualCore(true)` on Core 1 and call `sniffer.taskCore0()` in Core 0's `loop()`. Core 1 decodes even DMA buffers (`0, 2`) and Core 0 decodes odd ones (`1, 3`). Each packet belongs to the buffer where its SYNC starts, and each core re-reads the end of the previous buffer to find where that is. On 2026-11-25 (5 rounds per buffer size, against Wireshark), no packet was lost and no CRC, SYNC, stuffing or overflow error was counted, up to ~9,970 pkt/s of 64-byte packets with 2048-word buffers and ~9,900 pkt/s with 1024-word buffers. On the same bench, `v1.2.0` lost 41 of 182,602 packets with 2048 words and 54 of 109,673 with 1024 words, at the buffer boundaries. Those `v1.2.1` rounds ran a revision of the code from before three fixes that do not change how valid traffic is decoded; a confirmation run with the released sources (3 rounds with 2048 words, 2 with 1024) also lost none of 109,640 and 73,005 packets.
 
 ```cpp
-// Dual-Core Parallel Full-Speed example (200 MHz official — zero overclock!)
+// Dual-core Full-Speed example (default 200 MHz clock)
 void setup()  { Serial.begin(115200); }
 void loop()   { sniffer.taskCore0(); }   // Core 0 decodes odd DMA buffers
 
@@ -102,8 +107,8 @@ void loop1()  { sniffer.task(); }        // Core 1 decodes even DMA buffers
 > **8.01 hours**, **420 rounds** (**3,360 tests**), **15,320,290 packets generated** (`0` Host/Wireshark drops). Across all 7 profiles from `10 pkt/s` to `5,000 pkt/s` (including `64B 0xFF` and `64B 0x00`): **`2,562,000 / 2,562,000` packets captured (100.00%)** with **`0` CRC errors**, **`0` stuffing errors**, **`0` overflows**, and **`0` FIFO overruns**. Under extreme Full-Speed saturation (`~9,862 pkt/s`, `64B`): **`11,282,309 / 12,758,290` packets (88.43%)**, with zero thermal degradation over 8 hours.
 
 > **Recommended Arduino IDE clock settings & overclock considerations:**
-> - **`200 MHz` (Official RP2040 default — RECOMMENDED):** Zero overclocking, 100% stable across all RP2040 boards. With **Dual-Core mode**, delivers **100.0% lossless capture across ALL Full-Speed rates up to ~10,000 pkt/s (64B)** with `0` CRC errors and `0` FIFO overruns — even in Low-RAM mode (`SNIFFER_DMA_BUF_WORDS=1024`, 16 KB DMA RAM). In **Single-Core mode**, delivers 100% in Low-Speed and ~77–100% in Full-Speed.
-> - **`133–176 MHz` (Underclock / legacy RP2040 stock):** With **Dual-Core mode**, `133 MHz` already achieves `99.9–100%` up to 5,000 pkt/s, and `176 MHz` hits `100.0%` even under `P8_MAX` saturation.
+> - **`200 MHz` (default RP2040 clock, recommended):** no overclocking. With **dual-core mode** (`v1.2.1`), no packet was lost up to ~9,900 pkt/s of 64-byte packets, also in Low-RAM mode (`SNIFFER_DMA_BUF_WORDS=1024`, 16 KB of DMA buffers): 5 rounds each, 2026-11-25. In **single-core mode**, Full-Speed capture was 75–80% from 10 to 5,000 pkt/s and 59% at ~10,000 pkt/s (3 rounds, 2026-11-25), so use dual-core for Full-Speed.
+> - **`133–176 MHz` (Underclock / legacy RP2040 stock):** With **Dual-Core mode** (`v1.2.0`, 2026-11-24), `133 MHz` already achieved `99.9–100%` up to 5,000 pkt/s, and `176 MHz` `100.0%` under `P8_MAX` saturation (against the host count; see the note under the table).
 > - **`240–250 MHz` (Conservative overclock, Single-Core only):** Useful only if Core 0 cannot participate in decoding (`250 MHz` Single-Core reaches **100.0%** up to 1,000 pkt/s).
 > - **`276 MHz` (Aggressive overclock, Single-Core only):** Validated for 8 hours on our board (`100.00%` up to 5,000 pkt/s Single-Core), but due to **silicon lottery** and temperature variations it is not guaranteed on every RP2040 board. Prefer **Dual-Core @ `200 MHz`** instead!
 > - **`300 MHz` (Not recommended):** Proven unstable on standard RP2040 silicon (fails USB enumeration).
@@ -171,7 +176,7 @@ void loop1()  { sniffer.task(); }
 | Example | Description |
 |---------|-------------|
 | [`basic_sniffer`](examples/basic_sniffer/) | Minimal capture — prints every packet to Serial |
-| [`dual_core_sniffer`](examples/dual_core_sniffer/) | **Dual-Core 200 MHz Full-Speed** (100% lossless, zero overclock) + `sniffer.stats()` |
+| [`dual_core_sniffer`](examples/dual_core_sniffer/) | **Dual-Core Full-Speed** at the default 200 MHz clock + `sniffer.stats()` |
 | [`keyboard_logger`](examples/keyboard_logger/) | HID keyboard reports with modifier decoding |
 | [`packet_analyzer`](examples/packet_analyzer/) | Full protocol analyzer with hex dump and serial commands |
 | [`hid_filter`](examples/hid_filter/) | Auto-discovery + address/endpoint filtering + JSON output |
@@ -205,9 +210,9 @@ Define any of these **before** `#include <USBSnifferPIO_RP2040.h>` (or via `-D` 
 
 | Macro | Default | Description |
 |-------|---------|-------------|
-| `SNIFFER_DMA_BUF_WORDS` | `2048` | Words per DMA buffer (`2048` = 8 KB / 2.73 ms FS; `1024` = 4 KB Low-RAM mode, still 100% at 200 MHz Dual-Core!) |
+| `SNIFFER_DMA_BUF_WORDS` | `2048` | Words per DMA buffer (`2048` = 8 KB / 2.73 ms FS; `1024` = 4 KB Low-RAM mode, no packet lost at 200 MHz dual-core on 2026-11-25) |
 | `SNIFFER_DMA_BUF_COUNT` | `4` | DMA ring slots (`4` required for Dual-Core; `2` allowed for Single-Core ultra-low RAM) |
-| `SNIFFER_DUALCORE_TAIL_WORDS` | `48` | Max words peeked into next buffer to finish a boundary packet in Dual-Core mode |
+| `SNIFFER_DUALCORE_TAIL_WORDS` | `48` | Words read from the end of the previous buffer and from the start of the next one to resolve packets that cross a buffer boundary in Dual-Core mode (at least `44`, checked at compile time) |
 | `SNIFFER_DMA_IRQ_INDEX` | `1` | DMA IRQ line (`1` = `DMA_IRQ_1`, `0` = `DMA_IRQ_0`); override if another library claims `DMA_IRQ_1` exclusively |
 | `USB_MAX_PACKET_BYTES` | `72` | Max unstuffed bytes per packet (`PID[1] + DATA[64] + CRC16[2] + margin`) |
 | `USB_MAX_PACKET_BITS` | `680` | Max raw bits per packet (64B `0xFF` worst-case bit-stuffing = 625 bits) |
@@ -241,6 +246,8 @@ Access via `sniffer.decoder()`:
 | `overflow_errors` | Packets exceeding maximum length |
 | `fifo_overruns` | PIO RX FIFO stall or DMA buffer overrun events |
 
+In dual-core mode, `sniffer.stats()` adds both cores' counters. They are exact for valid traffic. With a corrupted stream, an error in a packet that crosses a DMA buffer boundary can be counted by both cores. After a stretch with no SE0 and no run of 10 J symbols, which the decoder needs to resynchronize at a buffer boundary, packets and errors up to the next such point can be missed.
+
 ## Project Structure
 
 ```
@@ -260,6 +267,7 @@ USBSnifferPIO_RP2040/
 │   ├── hid_filter/              # Address/endpoint filtering + JSON
 │   ├── statistics_monitor/      # Bus health dashboard
 │   └── diagnostic/              # Hardware diagnostic
+├── extras/host_test/            # Host-side decoder test, run by CI (make -C extras/host_test)
 ├── extras/test_bench/           # Automated Pico 2 W + Wireshark benchmark suite
 ├── library.properties           # Arduino Library Manager metadata
 ├── library.json                 # PlatformIO metadata
@@ -277,8 +285,8 @@ USBSnifferPIO_RP2040/
 | PIO state machines | 1 (auto-claimed) |
 | PIO instruction memory | 22 slots (of 32 per block) |
 | DMA channels | 2 (chained hardware ping-pong + `DMA_IRQ_1`) |
-| RAM | ~28 KB (2 × 8 KB buffers + SRAM decoder & CRC tables) |
-| Flash | ~6 KB (code) |
+| RAM | ~35 KB: 32 KB DMA ring (4 × 8 KB) + SRAM-resident decoder code and tables; ~19 KB with `SNIFFER_DMA_BUF_WORDS=1024` (a minimal dual-core sketch minus an empty one, arduino-pico 6.3.1, 2026-11-25) |
+| Flash | ~6 KB, including the decoder code copied to RAM at boot (same method, size of the `.bin` image) |
 | CPU | Near 0% during idle bus (O(1) all-J fast-path) |
 
 ## Requirements
@@ -302,14 +310,14 @@ USBSnifferPIO_RP2040/
 | **NeoPixel / WS2812** | NeoPixel on `pio0`, sniffer on `pio1` *(default)* | Can even share a PIO block if combined instructions ≤ 32 (22 + ~4–8 ≤ 32). |
 | **`DHT22PIO_RP2040`** | DHT22 on `pio0`, sniffer on `pio1` *(default)* | Combined instructions (>32) exceed one PIO block — keep on separate PIO blocks. |
 | **Blocking Core 0 I/O** *(Wi-Fi HTTP, SD card, I2C OLED, heavy `Serial`)* | Use **Single-Core mode** *(default)* | **Important:** In Dual-Core mode, Core 0 must call `taskCore0()` every `< 5.4 ms` (FS `2048w`). If Core 0 runs blocking calls, keep Single-Core mode so Core 1 stays isolated and Core 0 is 100% free. |
-| **Tight RAM projects** *(Pico W + Wi-Fi + TLS)* | `#define SNIFFER_DMA_BUF_WORDS 1024` | Cuts DMA RAM in half (16 KB instead of 32 KB) while still hitting **100.0% at 200 MHz Dual-Core**. |
+| **Tight RAM projects** *(Pico W + Wi-Fi + TLS)* | `#define SNIFFER_DMA_BUF_WORDS 1024` | Cuts DMA RAM in half (16 KB instead of 32 KB); no packet lost at 200 MHz dual-core on 2026-11-25. |
 
 > **Tip:** Always monitor `sniffer.stats().fifo_overruns` when integrating additional libraries — any non-zero count immediately tells you if another module is starving CPU or DMA bandwidth.
 
 ## Limitations
 
 - USB 1.1 only (Low-Speed and Full-Speed). USB 2.0 High-Speed (480 Mbps) is beyond the RP2040's PIO sampling rate.
-- Full-Speed (12 Mbps) requires a 96 MHz PIO clock and fast decoding. Use the default `200 MHz` CPU clock for moderate traffic, or `276 MHz` (`-O3`) in Arduino IDE for lossless capture up to 5,000+ pkt/s.
+- Full-Speed (12 Mbps) requires a 96 MHz PIO clock and fast decoding. At the default `200 MHz` clock, use dual-core mode: single-core captured 75–80% of Full-Speed packets on 2026-11-25.
 - Avoid heavy blocking `Serial.print()` inside `onPacket()` — copy packets into a ring buffer on Core 1 and print from Core 0 (as shown in the examples).
 - The decoder is not interrupt-safe. Call `task()` from a single core only.
 - Maximum payload per packet: 64 bytes (Full-Speed bulk/interrupt endpoint limit).
